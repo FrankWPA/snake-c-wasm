@@ -6,7 +6,13 @@
 #define COLOR2 0xFF189018
 #define COLOR3 0xFF31A6FF
 
-#define SCREEN_HEIGHT ROWS * 10
+#define SCREEN_HEIGHT (ROWS * SCREEN_SIZE / COLS)
+#define FONT_SIZE 8
+
+#define DOUBLE_SCREEN
+#ifdef DOUBLE_SCREEN
+#define BOTTON_SCREEN (SCREEN_SIZE - SCREEN_HEIGHT)
+#endif
 
 uint8_t prev_state = 0;
 
@@ -57,10 +63,29 @@ u32 get_color(u32 color)
     }
 }
 
+i32 align_offset(Align align, const char *message)
+{
+    switch (align)
+    {
+    case ALIGN_CENTER: return strlen(message)/2;
+    case ALIGN_RIGHT: return strlen(message);
+    default: return 0;
+    }
+}
+
 void platform_draw_text(i32 x, i32 y, const char *message, u32 size, u32 color, Align align)
 {
     *DRAW_COLORS = get_color(color);
-    text(message, x/10, y/5 + SCREEN_HEIGHT);
+    i32 offset = align_offset(align, message) * FONT_SIZE;
+
+#ifdef DOUBLE_SCREEN
+    if(BOTTON_SCREEN >= 20)
+    {
+        y = y * BOTTON_SCREEN / SCREEN_HEIGHT + SCREEN_HEIGHT;
+    }
+#endif
+
+    text(message, x - offset, y);
 }
 
 void platform_log(const char *message)

@@ -335,7 +335,7 @@ void game_render(void)
     background_render();
     fill_cell(&game.egg, EGG_COLOR);
     snake_render(&game.snake);
-    platform_draw_text(SCORE_PADDING, SCORE_PADDING, game.score_buffer, SCORE_FONT_SIZE, SCORE_FONT_COLOR, ALIGN_LEFT);
+    platform_draw_text(game.width/16, game.height/9, game.score_buffer, SCORE_FONT_SIZE, SCORE_FONT_COLOR, ALIGN_LEFT);
 
     switch (game.state) {
     case STATE_GAMEPLAY: {
