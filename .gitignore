@@ -2,3 +2,4 @@ game.o
 game.wasm
 sdl_main
 *.swp
+/build
