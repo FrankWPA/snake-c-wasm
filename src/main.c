@@ -16,12 +16,20 @@
 
 uint8_t prev_state = 0;
 
+u32 rgb_color(u32 color)
+{
+    const r = ((color>>(0*8))&0xFF) << (2*8);
+    const g = ((color>>(1*8))&0xFF) << (1*8);
+    const b = ((color>>(2*8))&0xFF) << (0*8);
+    return r  + g  + b;
+}
+
 void start()
 {
-    PALETTE[0] = COLOR0;
-    PALETTE[1] = COLOR1;
-    PALETTE[2] = COLOR2;
-    PALETTE[3] = COLOR3;
+    PALETTE[0] = rgb_color(COLOR0);
+    PALETTE[1] = rgb_color(COLOR1);
+    PALETTE[2] = rgb_color(COLOR2);
+    PALETTE[3] = rgb_color(COLOR3);
     game_init(SCREEN_SIZE, SCREEN_HEIGHT);
 }
 
