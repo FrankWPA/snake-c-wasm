@@ -46,13 +46,13 @@ void update () {
     
     prev_state = *GAMEPAD1;
 
-    game_update(1.0f/30.0f);
+    game_update(1.0f/60.0f);
     game_render();
 }
 
 void platform_panic(const char *file_path, int32_t line, const char *message){}
 
-u32 get_color(u32 color)
+uint16_t get_color(u32 color)
 {
     switch (color)
     {
@@ -73,7 +73,7 @@ i32 align_offset(Align align, const char *message)
     }
 }
 
-void platform_draw_text(i32 x, i32 y, const char *message, u32 size, u32 color, Align align)
+void platform_fill_text(i32 x, i32 y, const char *message, u32 size, u32 color, Align align)
 {
     *DRAW_COLORS = get_color(color);
     i32 offset = align_offset(align, message) * FONT_SIZE;
@@ -97,4 +97,16 @@ void platform_fill_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
 {
     *DRAW_COLORS = get_color(color);
     rect(x, y, w, h);
+}
+
+void platform_stroke_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
+{
+    *DRAW_COLORS = (get_color(color)<<4) & 0xff;
+    rect(x, y, w, h);
+}
+
+void platform_stroke_line(i32 x1, i32 y1, i32 x2, i32 y2, u32 color)
+{
+    *DRAW_COLORS = get_color(color);
+    line(x1, y1, x2, y2);
 }

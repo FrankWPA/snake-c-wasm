@@ -43,13 +43,18 @@ function platform_fill_rect(x, y, w, h, color) {
     ctx.fillRect(x, y, w, h);
 }
 
+function platform_stroke_rect(x, y, w, h, color) {
+    ctx.strokeStyle = color_hex(color); 
+    ctx.strokeRect(x, y, w, h);
+}
+
 iota = 0;
 const ALIGN_LEFT   = iota++;
 const ALIGN_RIGHT  = iota++;
 const ALIGN_CENTER = iota++;
 const ALIGN_NAMES = ["left", "right", "center"];
 
-function platform_draw_text(x, y, text_ptr, size, color, align) {
+function platform_fill_text(x, y, text_ptr, size, color, align) {
     const buffer = wasm.instance.exports.memory.buffer;
     const text = cstr_by_ptr(buffer, text_ptr);
     ctx.fillStyle = color_hex(color);
@@ -84,9 +89,10 @@ function loop(timestamp) {
 WebAssembly.instantiateStreaming(fetch('game.wasm'), {
     env: {
         platform_fill_rect,
+        platform_stroke_rect,
+        platform_fill_text,
         platform_panic,
         platform_log,
-        platform_draw_text,
     }
 }).then((w) => {
     wasm = w;
