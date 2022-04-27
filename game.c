@@ -124,6 +124,12 @@ typedef struct {
     u32 size;
 } Snake;
 
+typedef struct {
+    Rect items[SNAKE_CAP];
+    Vec vels[SNAKE_CAP];
+    u32 size;
+} Dead_Snake;
+
 typedef enum {
     STATE_GAMEPLAY = 0,
     STATE_PAUSE,
@@ -145,6 +151,7 @@ typedef struct {
 
     State state;
     Snake snake;
+    Dead_Snake dead_snake;
     Cell egg;
     b32 eating_egg;
 
@@ -218,6 +225,7 @@ static inline b32 cell_eq(Cell a, Cell b)
 
 static b32 is_cell_snake_body(Cell cell)
 {
+    // TODO: ignoring the tail feel hacky @tail-ignore
     for (u32 index = 1; index < game.snake.size; ++index) {
         if (cell_eq(*ring_get(&game.snake, index), cell)) {
             return TRUE;
@@ -243,6 +251,7 @@ static inline Cell random_cell_outside_of_snake(void)
     return cell;
 }
 
+// TODO: animation on restart
 static void game_restart(u32 width, u32 height)
 {
     memset(&game, 0, sizeof(game));
@@ -261,9 +270,33 @@ static void game_restart(u32 width, u32 height)
     stbsp_snprintf(game.score_buffer, sizeof(game.score_buffer), "Score: %u", game.score);
 }
 
-static void fill_cell(Cell cell, u32 color)
+f32 lerpf(f32 a, f32 b, f32 t)
 {
-    platform_fill_rect(cell.x*game.cell_width, cell.y*game.cell_height, game.cell_width, game.cell_height, color);
+    return (b - a)*t + a;
+}
+
+f32 ilerpf(f32 a, f32 b, f32 v)
+{
+    return (v - a)/(b - a);
+}
+
+static void fill_rect(Rect rect, u32 color)
+{
+    platform_fill_rect(rect.x, rect.y, rect.w, rect.h, color);
+}
+
+static void fill_cell(Cell cell, u32 color, f32 a)
+{
+    f32 x = cell.x*game.cell_width;
+    f32 y = cell.y*game.cell_height;
+    f32 w = game.cell_width;
+    f32 h = game.cell_height;
+    platform_fill_rect(
+            lerpf(x, x + w*0.5f, 1.0f - a), 
+            lerpf(y, y + h*0.5f, 1.0f - a), 
+            lerpf(0.0f, w, a), 
+            lerpf(0.0f, h, a), 
+            color);
 }
 
 void stroke_cell(Cell cell, u32 color)
@@ -344,11 +377,6 @@ Vec cell_center(Cell a)
     };
 }
 
-f32 lerpf(f32 a, f32 b, f32 t)
-{
-    return (b - a)*t + a;
-}
-
 Sides cut_sides(Sides sides, Dir dir, f32 a)
 {
     sides.lens[dir_opposite(dir)] = lerpf(sides.lens[dir_opposite(dir)], sides.lens[dir], a);
@@ -376,7 +404,7 @@ static void snake_render(void)
         fill_sides(slide_sides(head_sides, dir_opposite(head_dir), t), SNAKE_BODY_COLOR);
 
         for (u32 index = 1; index < game.snake.size - 1; ++index) {
-            fill_cell(*ring_get(&game.snake, index), SNAKE_BODY_COLOR);
+            fill_cell(*ring_get(&game.snake, index), SNAKE_BODY_COLOR, 1.0f);
         }
     } else {
         Cell  tail_cell   = *ring_front(&game.snake);
@@ -392,7 +420,7 @@ static void snake_render(void)
         fill_sides(slide_sides(head_sides, dir_opposite(head_dir), t), SNAKE_BODY_COLOR);
 
         for (u32 index = 1; index < game.snake.size - 1; ++index) {
-            fill_cell(*ring_get(&game.snake, index), SNAKE_BODY_COLOR);
+            fill_cell(*ring_get(&game.snake, index), SNAKE_BODY_COLOR, 1.0f);
         }
     }
 }
@@ -403,7 +431,7 @@ static void background_render(void)
         for (i32 row = 0; row < ROWS; ++row) {
             u32 color = (row + col)%2 == 0 ? CELL1_COLOR : CELL2_COLOR;
             Cell cell = { .x = col, .y = row, };
-            fill_cell(cell, color);
+            fill_cell(cell, color, 1.0f);
         }
     }
 }
@@ -426,23 +454,57 @@ void game_init(u32 width, u32 height)
 #define GAMEOVER_FONT_COLOR SCORE_FONT_COLOR
 #define GAMEOVER_FONT_SIZE SCORE_FONT_SIZE
 
+void egg_render(void)
+{
+    if (game.eating_egg) {
+        f32 t = 1.0f - game.step_cooldown/STEP_INTEVAL;
+        f32 px = 0.75f;
+        f32 py = 1.25f;
+        if (t < px) {
+            f32 a = lerpf(0.0f, py, ilerpf(0.0f, px, t));
+            fill_cell(game.egg, EGG_COLOR, a*a);
+        } else {
+            f32 a = lerpf(py, 1.0f, ilerpf(px, 1.0f, t));
+            fill_cell(game.egg, EGG_COLOR, a);
+        }
+    } else {
+        fill_cell(game.egg, EGG_COLOR, 1.0f);
+    }
+}
+
+void dead_snake_render(void)
+{
+    // @tail-ignore
+    for (u32 i = 1; i < game.dead_snake.size; ++i) {
+        fill_rect(game.dead_snake.items[i], SNAKE_BODY_COLOR);
+    }
+}
+
 void game_render(void)
 {
-    background_render();
-    fill_cell(game.egg, EGG_COLOR);
-    snake_render();
-    platform_fill_text(game.width/16, game.height/9, game.score_buffer, SCORE_FONT_SIZE, SCORE_FONT_COLOR, ALIGN_LEFT);
-
     switch (game.state) {
     case STATE_GAMEPLAY: {
+        background_render();
+        egg_render();
+        snake_render();
+        platform_fill_text(SCORE_PADDING, SCORE_PADDING, game.score_buffer, SCORE_FONT_SIZE, SCORE_FONT_COLOR, ALIGN_LEFT);
     } break;
 
     case STATE_PAUSE: {
+        background_render();
+        egg_render();
+        snake_render();
+        platform_fill_text(SCORE_PADDING, SCORE_PADDING, game.score_buffer, SCORE_FONT_SIZE, SCORE_FONT_COLOR, ALIGN_LEFT);
+        // TODO: "Pause", "Game Over" are not centered vertically
         platform_fill_text(game.width/2, game.height/2, "Pause", PAUSE_FONT_SIZE, PAUSE_FONT_COLOR, ALIGN_CENTER);
     }
     break;
 
     case STATE_GAMEOVER: {
+        background_render();
+        egg_render();
+        dead_snake_render();
+        platform_fill_text(SCORE_PADDING, SCORE_PADDING, game.score_buffer, SCORE_FONT_SIZE, SCORE_FONT_COLOR, ALIGN_LEFT);
         platform_fill_text(game.width/2, game.height/2, "Game Over", GAMEOVER_FONT_SIZE, GAMEOVER_FONT_COLOR, ALIGN_CENTER);
     }
     break;
@@ -473,20 +535,33 @@ void game_keydown(Key key)
         case KEY_ACCEPT:
             game.state = STATE_PAUSE;
             break;
+        case KEY_RESTART:
+            game_restart(game.width, game.height);
+            break;
         default:
         {}
         }
     } break;
 
     case STATE_PAUSE: {
-        if (key == KEY_ACCEPT) {
-            game.state = STATE_GAMEPLAY;
+        switch (key) {
+            case KEY_ACCEPT:
+                game.state = STATE_GAMEPLAY;
+                break;
+            case KEY_RESTART:
+                game_restart(game.width, game.height);
+                break;
+            case KEY_LEFT:
+            case KEY_RIGHT:
+            case KEY_UP:
+            case KEY_DOWN:
+            default: {}
         }
     }
     break;
 
     case STATE_GAMEOVER: {
-        if (key == KEY_ACCEPT) {
+        if (key == KEY_ACCEPT || key == KEY_RESTART) {
             game_restart(game.width, game.height);
         }
     }
@@ -496,6 +571,19 @@ void game_keydown(Key key)
         UNREACHABLE();
     }
     }
+}
+
+Vec vec_sub(Vec a, Vec b)
+{
+    return (Vec) {
+        .x = a.x - b.x,
+        .y = a.y - b.y,
+    };
+}
+
+f32 vec_len(Vec a)
+{
+    return platform_sqrtf(a.x*a.x + a.y*a.y);
 }
 
 void game_update(f32 dt)
@@ -525,6 +613,32 @@ void game_update(f32 dt)
                 // step_cooldown < 0.0f
                 game.step_cooldown = 0.0f;
                 game.state = STATE_GAMEOVER;
+
+                game.dead_snake.size = game.snake.size;
+                Vec head_center = cell_center(next_head);
+                for (u32 i = 0; i < game.snake.size; ++i) {
+#define GAMEOVER_EXPLOSION_RADIUS 1000.0f
+#define GAMEOVER_EXPLOSION_MAX_VEL 200.0f
+                    Cell cell = *ring_get(&game.snake, i);
+                    game.dead_snake.items[i] = cell_rect(cell);
+                    if (!cell_eq(cell, next_head)) {
+                        Vec vel_vec = vec_sub(cell_center(cell), head_center);
+                        f32 vel_len = vec_len(vel_vec);
+                        f32 t = ilerpf(0.0f, GAMEOVER_EXPLOSION_RADIUS, vel_len);
+                        if (t > 1.0f) t = 1.0f;
+                        t = 1.0f - t;
+                        f32 noise_x = (rand()%1000)*0.01;
+                        f32 noise_y = (rand()%1000)*0.01;
+                        vel_vec.x = vel_vec.x/vel_len*GAMEOVER_EXPLOSION_MAX_VEL*t + noise_x;
+                        vel_vec.y = vel_vec.y/vel_len*GAMEOVER_EXPLOSION_MAX_VEL*t + noise_y;
+                        game.dead_snake.vels[i] = vel_vec;
+                        // TODO: additional velocities along the body of the dead snake
+                    } else {
+                        game.dead_snake.vels[i].x = 0;
+                        game.dead_snake.vels[i].y = 0;
+                    }
+                }
+
                 return;
             } else {
                 ring_push_back(&game.snake, next_head);
@@ -537,9 +651,16 @@ void game_update(f32 dt)
     }
     break;
 
-    case STATE_PAUSE:
-    case STATE_GAMEOVER:
-    {} break;
+    case STATE_PAUSE: {} break;
+    case STATE_GAMEOVER: {
+        // @tail-ignore
+        for (u32 i = 1; i < game.dead_snake.size; ++i) {
+            game.dead_snake.vels[i].x *= 0.99f;
+            game.dead_snake.vels[i].y *= 0.99f;
+            game.dead_snake.items[i].x += game.dead_snake.vels[i].x*dt;
+            game.dead_snake.items[i].y += game.dead_snake.vels[i].y*dt;
+        }
+    } break;
 
     default: {
         UNREACHABLE();
@@ -548,4 +669,4 @@ void game_update(f32 dt)
 }
 
 // TODO: moving around egg
-// TODO: key bindings to restart the game
+// TODO: inifinite field mechanics
