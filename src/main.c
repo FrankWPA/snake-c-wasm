@@ -6,13 +6,12 @@
 #define COLOR2 0xFF189018
 #define COLOR3 0xFF31A6FF
 
-#define SCREEN_WIDTH (10 * SCREEN_SIZE) 
-#define SCREEN_HEIGHT (ROWS * SCREEN_WIDTH / COLS) 
+#define SCREEN_HEIGHT (ROWS * SCREEN_SIZE / COLS) 
 #define FONT_SIZE 8
 
 #define DOUBLE_SCREEN
 #ifdef DOUBLE_SCREEN
-#define BOTTON_SCREEN (SCREEN_WIDTH - SCREEN_HEIGHT)
+#define BOTTON_SCREEN (SCREEN_SIZE - SCREEN_HEIGHT)
 #endif
 
 uint8_t prev_state = 0;
@@ -31,7 +30,7 @@ void start()
     PALETTE[1] = rgb_color(COLOR1);
     PALETTE[2] = rgb_color(COLOR2);
     PALETTE[3] = rgb_color(COLOR3);
-    game_init(SCREEN_WIDTH, SCREEN_HEIGHT);
+    game_init(SCREEN_SIZE * 10, SCREEN_HEIGHT * 10);
 }
 
 void update () {
@@ -85,16 +84,17 @@ i32 align_offset(Align align, const char *message)
 void platform_fill_text(i32 x, i32 y, const char *message, u32 size, u32 color, Align align)
 {
     *DRAW_COLORS = get_color(color);
-    i32 offset = align_offset(align, message) * FONT_SIZE;
+    x = x/10 - align_offset(align, message) * FONT_SIZE;
+    y = y/10;
 
 #ifdef DOUBLE_SCREEN
-    if(BOTTON_SCREEN >= 200)
+    if(BOTTON_SCREEN >= 20)
     {
         y = y * BOTTON_SCREEN / SCREEN_HEIGHT + SCREEN_HEIGHT;
     }
 #endif
 
-    text(message, x/10 - offset, y/10);
+    text(message, x, y);
 }
 
 void platform_log(const char *message)
@@ -105,13 +105,25 @@ void platform_log(const char *message)
 void platform_fill_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
 {
     *DRAW_COLORS = get_color(color);
-    rect(x/10, y/10, w/10, h/10);
+
+    x /= 10;
+    y /= 10;
+    w /= 10;
+    h = (y + h/10 > SCREEN_HEIGHT) ? SCREEN_HEIGHT - y : h/10;
+
+    rect(x, y, w, h);
 }
 
 void platform_stroke_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
 {
     *DRAW_COLORS = (get_color(color)<<4) & 0xff;
-    rect(x/10, y/10, w/10, h/10);
+
+    x /= 10;
+    y /= 10;
+    w /= 10;
+    h = (y + h/10 > SCREEN_HEIGHT) ? SCREEN_HEIGHT - y : h/10;
+
+    rect(x, y, w, h);
 }
 
 void platform_stroke_line(i32 x1, i32 y1, i32 x2, i32 y2, u32 color)
