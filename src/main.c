@@ -10,7 +10,7 @@
 #define FONT_SIZE 8
 
 #define DOUBLE_SCREEN
-#ifdef DOUBLE_SCREEN
+#if defined(DOUBLE_SCREEN) && (SCREEN_SIZE - SCREEN_HEIGHT > 20)
 #define BOTTON_SCREEN (SCREEN_SIZE - SCREEN_HEIGHT)
 #endif
 
@@ -18,9 +18,9 @@ uint8_t prev_state = 0;
 
 u32 rgb_color(u32 color)
 {
-    const r = ((color>>(0*8))&0xFF) << (2*8);
-    const g = ((color>>(1*8))&0xFF) << (1*8);
-    const b = ((color>>(2*8))&0xFF) << (0*8);
+    const int r = ((color>>(0*8))&0xFF) << (2*8);
+    const int g = ((color>>(1*8))&0xFF) << (1*8);
+    const int b = ((color>>(2*8))&0xFF) << (0*8);
     return r  + g  + b;
 }
 
@@ -58,7 +58,10 @@ void update () {
     game_render();
 }
 
-void platform_panic(const char *file_path, int32_t line, const char *message){}
+void platform_panic(const char *file_path, int line, const char *message)
+{
+    tracef("%s:%d: GAME ASSERTION FAILED: %s\n", file_path, line, message);
+}
 
 uint16_t get_color(u32 color)
 {
@@ -67,7 +70,7 @@ uint16_t get_color(u32 color)
     case COLOR0: return 0x001;
     case COLOR1: return 0x002;
     case COLOR2: return 0x003;
-    default: return 0x004;
+    case COLOR3: default: return 0x004;
     }
 }
 
@@ -77,7 +80,7 @@ i32 align_offset(Align align, const char *message)
     {
     case ALIGN_CENTER: return strlen(message)/2;
     case ALIGN_RIGHT: return strlen(message);
-    default: return 0;
+    case ALIGN_LEFT: default: return 0;
     }
 }
 
@@ -85,13 +88,11 @@ void platform_fill_text(i32 x, i32 y, const char *message, u32 size, u32 color, 
 {
     *DRAW_COLORS = get_color(color);
     x = x/10 - align_offset(align, message) * FONT_SIZE;
-    y = y/10;
 
-#ifdef DOUBLE_SCREEN
-    if(BOTTON_SCREEN >= 20)
-    {
-        y = y * BOTTON_SCREEN / SCREEN_HEIGHT + SCREEN_HEIGHT;
-    }
+#ifdef BOTTON_SCREEN
+    y = y/10 * BOTTON_SCREEN / SCREEN_HEIGHT + SCREEN_HEIGHT;
+#else
+    y = y/10;
 #endif
 
     text(message, x, y);
@@ -99,7 +100,7 @@ void platform_fill_text(i32 x, i32 y, const char *message, u32 size, u32 color, 
 
 void platform_log(const char *message)
 {
-    trace(message);
+    tracef("[LOG] %s", message);
 }
 
 void platform_fill_rect(i32 x, i32 y, i32 w, i32 h, u32 color)
