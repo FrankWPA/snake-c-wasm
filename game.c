@@ -1,5 +1,7 @@
 #include "./game.h"
 
+// #define FEATURE_DYNAMIC_CAMERA
+
 #define STB_SPRINTF_IMPLEMENTATION
 #include "stb_sprintf.h"
 
@@ -15,13 +17,15 @@ static char logf_buf[4096] = {0};
         platform_log(logf_buf); \
     } while(0)
 
-void platform_assert(const char *file, i32 line, b32 cond, const char *message)
+static void platform_assert(const char *file, i32 line, b32 cond, const char *message)
 {
     if (!cond) platform_panic(file, line, message);
 }
 #define ASSERT(cond, message) platform_assert(__FILE__, __LINE__, cond, message)
 #define UNREACHABLE() platform_panic(__FILE__, __LINE__, "unreachable")
 
+// NOTE: This implies that the platform has to carefully choose the resolution so the cells fit into the screen
+#define CELL_SIZE 100
 #define COLS 16
 #define ROWS 9
 
@@ -46,7 +50,7 @@ static u32 rand(void)
     return (rand_state >> 32)&0xFFFFFFFF;
 }
 
-static inline void *memset(void *mem, u32 c, u32 n)
+static void *memset(void *mem, u32 c, u32 n)
 {
     void *result = mem;
     u8 *bytes = mem;
@@ -62,7 +66,7 @@ typedef enum {
     COUNT_DIRS,
 } Dir;
 
-static inline Dir dir_opposite(Dir dir)
+static Dir dir_opposite(Dir dir)
 {
     ASSERT(0 <= dir && dir < COUNT_DIRS, "Invalid direction");
     return (dir + 2)%COUNT_DIRS;
@@ -76,7 +80,7 @@ typedef struct {
     f32 lens[COUNT_DIRS];
 } Sides;
 
-Sides rect_sides(Rect rect)
+static Sides rect_sides(Rect rect)
 {
     Sides sides = {
         .lens = {
@@ -89,24 +93,15 @@ Sides rect_sides(Rect rect)
     return sides;
 }
 
-inline b32 sides_overlap(Sides a, Sides b)
+static Rect sides_rect(Sides sides)
 {
-    f32 r1 = a.lens[DIR_RIGHT];
-    f32 l1 = a.lens[DIR_LEFT];
-    f32 t1 = a.lens[DIR_UP];
-    f32 b1 = a.lens[DIR_DOWN];
-
-    f32 r2 = b.lens[DIR_RIGHT];
-    f32 l2 = b.lens[DIR_LEFT];
-    f32 t2 = b.lens[DIR_UP];
-    f32 b2 = b.lens[DIR_DOWN];
-
-    return !(r1 < l2 || r2 < l1 || b1 < t2 || b2 < t1);
-}
-
-inline b32 rects_overlap(Rect a, Rect b)
-{
-    return sides_overlap(rect_sides(a), rect_sides(b));
+    Rect rect = {
+        .x = sides.lens[DIR_LEFT],
+        .y = sides.lens[DIR_UP],
+        .w = sides.lens[DIR_RIGHT] - sides.lens[DIR_LEFT],
+        .h = sides.lens[DIR_DOWN] - sides.lens[DIR_UP],
+    };
+    return rect;
 }
 
 typedef struct {
@@ -146,8 +141,9 @@ typedef struct {
 typedef struct {
     u32 width;
     u32 height;
-    u32 cell_width;
-    u32 cell_height;
+
+    Vec camera_pos;
+    Vec camera_vel;
 
     State state;
     Snake snake;
@@ -167,13 +163,13 @@ typedef struct {
 
 static Game game = {0};
 
-Rect cell_rect(Cell cell)
+static Rect cell_rect(Cell cell)
 {
     Rect result = {
-        .x = cell.x*game.cell_width,
-        .y = cell.y*game.cell_height,
-        .w = game.cell_width,
-        .h = game.cell_height,
+        .x = cell.x*CELL_SIZE,
+        .y = cell.y*CELL_SIZE,
+        .w = CELL_SIZE,
+        .h = CELL_SIZE,
     };
     return result;
 }
@@ -218,7 +214,7 @@ Rect cell_rect(Cell cell)
     (ASSERT((ring)->size > 0, "Ring buffer is empty"), \
      &(ring)->items[((ring)->begin + (index))%ring_cap(ring)])
 
-static inline b32 cell_eq(Cell a, Cell b)
+static b32 cell_eq(Cell a, Cell b)
 {
     return a.x == b.x && a.y == b.y;
 }
@@ -234,15 +230,7 @@ static b32 is_cell_snake_body(Cell cell)
     return FALSE;
 }
 
-static inline Cell random_cell(void)
-{
-    Cell result = {0};
-    result.x = rand()%COLS;
-    result.y = rand()%ROWS;
-    return result;
-}
-
-static inline i32 emod(i32 a, i32 b)
+static i32 emod(i32 a, i32 b)
 {
     return (a%b + b)%b;
 }
@@ -272,22 +260,37 @@ static Cell step_cell(Cell head, Dir dir)
     }
     }
 
+#ifndef FEATURE_DYNAMIC_CAMERA
     head.x = emod(head.x, COLS);
     head.y = emod(head.y, ROWS);
+#endif
 
     return head;
 }
 
-static inline Cell random_cell_outside_of_snake(void)
+static void random_egg(void)
 {
-    // TODO: prevent running out of space
-    // Should not be a problem with infinite field mechanics
-    ASSERT(game.snake.size < ROWS*COLS, "No place");
-    Cell cell;
+#define RANDOM_EGG_MAX_ATTEMPTS 1000
+#ifdef FEATURE_DYNAMIC_CAMERA
+    i32 col1 = (i32)(game.camera_pos.x - game.width*0.5f + CELL_SIZE)/CELL_SIZE;
+    i32 col2 = (i32)(game.camera_pos.x + game.width*0.5f - CELL_SIZE)/CELL_SIZE;
+    i32 row1 = (i32)(game.camera_pos.y - game.height*0.5f + CELL_SIZE)/CELL_SIZE;
+    i32 row2 = (i32)(game.camera_pos.y + game.height*0.5f - CELL_SIZE)/CELL_SIZE;
+#else
+    i32 col1 = 0;
+    i32 col2 = COLS - 1;
+    i32 row1 = 0;
+    i32 row2 = ROWS - 1;
+#endif
+
+    u32 attempt = 0;
     do {
-        cell = random_cell();
-    } while (is_cell_snake_body(cell));
-    return cell;
+        game.egg.x = rand()%(col2 - col1 + 1) + col1;
+        game.egg.y = rand()%(row2 - row1 + 1) + row1;
+        attempt += 1;
+    } while (is_cell_snake_body(game.egg) && attempt < RANDOM_EGG_MAX_ATTEMPTS);
+
+    ASSERT(attempt <= RANDOM_EGG_MAX_ATTEMPTS, "TODO: make sure we have always at least one free visible cell");
 }
 
 // TODO: animation on restart
@@ -295,75 +298,60 @@ static void game_restart(u32 width, u32 height)
 {
     memset(&game, 0, sizeof(game));
 
-    game.width       = width;
-    game.height      = height;
-    // NOTE: This implies that the platform has to carefully choose the resolution so the cells stay squared
-    game.cell_width  = width / COLS;
-    game.cell_height = height / ROWS;
+    game.width        = width;
+    game.height       = height;
+    game.camera_pos.x = width/2;
+    game.camera_pos.y = height/2;
+
     for (u32 i = 0; i < SNAKE_INIT_SIZE; ++i) {
         Cell head = {.x = i, .y = ROWS/2};
         ring_push_back(&game.snake, head);
     }
-    game.egg = random_cell_outside_of_snake();
+    random_egg();
     game.dir = DIR_RIGHT;
+    // TODO: Using snprintf to render Score is an overkill
+    // I believe snprintf should be only used for LOGF and in the "release" build stbsp_snprintf should not be included at all
     stbsp_snprintf(game.score_buffer, sizeof(game.score_buffer), "Score: %u", game.score);
 }
 
-f32 lerpf(f32 a, f32 b, f32 t)
+static f32 lerpf(f32 a, f32 b, f32 t)
 {
     return (b - a)*t + a;
 }
 
-f32 ilerpf(f32 a, f32 b, f32 v)
+static f32 ilerpf(f32 a, f32 b, f32 v)
 {
     return (v - a)/(b - a);
 }
 
 static void fill_rect(Rect rect, u32 color)
 {
-    platform_fill_rect(rect.x, rect.y, rect.w, rect.h, color);
+    platform_fill_rect(
+        rect.x - game.camera_pos.x + game.width/2,
+        rect.y - game.camera_pos.y + game.height/2,
+        rect.w, rect.h, color);
+}
+
+static Rect scale_rect(Rect r, float a)
+{
+    r.x = lerpf(r.x, r.x + r.w*0.5f, 1.0f - a);
+    r.y = lerpf(r.y, r.y + r.h*0.5f, 1.0f - a);
+    r.w = lerpf(0.0f, r.w, a);
+    r.h = lerpf(0.0f, r.h, a);
+    return r;
 }
 
 static void fill_cell(Cell cell, u32 color, f32 a)
 {
-    f32 x = cell.x*game.cell_width;
-    f32 y = cell.y*game.cell_height;
-    f32 w = game.cell_width;
-    f32 h = game.cell_height;
-    platform_fill_rect(
-            lerpf(x, x + w*0.5f, 1.0f - a), 
-            lerpf(y, y + h*0.5f, 1.0f - a), 
-            lerpf(0.0f, w, a), 
-            lerpf(0.0f, h, a), 
-            color);
+    fill_rect(scale_rect(cell_rect(cell), a), color);
 }
 
-void stroke_cell(Cell cell, u32 color)
+static void fill_sides(Sides sides, u32 color)
 {
-    platform_stroke_rect(cell.x*game.cell_width, cell.y*game.cell_height, game.cell_width, game.cell_height, color);
+    fill_rect(sides_rect(sides), color);
 }
 
-void stroke_sides(Sides sides, u32 color)
-{
-    platform_stroke_rect(
-        sides.lens[DIR_LEFT],
-        sides.lens[DIR_UP],
-        sides.lens[DIR_RIGHT] - sides.lens[DIR_LEFT],
-        sides.lens[DIR_DOWN] - sides.lens[DIR_UP],
-        color);
-}
-
-void fill_sides(Sides sides, u32 color)
-{
-    platform_fill_rect(
-        sides.lens[DIR_LEFT],
-        sides.lens[DIR_UP],
-        sides.lens[DIR_RIGHT] - sides.lens[DIR_LEFT],
-        sides.lens[DIR_DOWN] - sides.lens[DIR_UP],
-        color);
-}
-
-Dir cells_dir(Cell a, Cell b)
+static Dir cells_dir(Cell a, Cell b)
 {
     for (Dir dir = 0; dir < COUNT_DIRS; ++dir) {
         if (cell_eq(step_cell(a, dir), b)) return dir;
@@ -372,21 +360,15 @@ Dir cells_dir(Cell a, Cell b)
     return 0;
 }
 
-Vec cell_center(Cell a)
+static Vec cell_center(Cell a)
 {
     return (Vec) {
-        .x = a.x*game.cell_width + game.cell_width*0.5f,
-        .y = a.y*game.cell_height + game.cell_height*0.5f,
+        .x = a.x*CELL_SIZE + CELL_SIZE/2,
+        .y = a.y*CELL_SIZE + CELL_SIZE/2,
     };
 }
 
-Sides cut_sides(Sides sides, Dir dir, f32 a)
-{
-    sides.lens[dir_opposite(dir)] = lerpf(sides.lens[dir_opposite(dir)], sides.lens[dir], a);
-    return sides;
-}
-
-Sides slide_sides(Sides sides, Dir dir, f32 a)
+static Sides slide_sides(Sides sides, Dir dir, f32 a)
 {
     f32 d = sides.lens[dir] - sides.lens[dir_opposite(dir)];
     sides.lens[dir]               += lerpf(0, d, a);
@@ -430,8 +412,13 @@ static void snake_render(void)
 
 static void background_render(void)
 {
-    for (i32 col = 0; col < COLS; ++col) {
-        for (i32 row = 0; row < ROWS; ++row) {
+    i32 col1 = (i32)(game.camera_pos.x - game.width*0.5f - CELL_SIZE)/CELL_SIZE;
+    i32 col2 = (i32)(game.camera_pos.x + game.width*0.5f + CELL_SIZE)/CELL_SIZE;
+    i32 row1 = (i32)(game.camera_pos.y - game.height*0.5f - CELL_SIZE)/CELL_SIZE;
+    i32 row2 = (i32)(game.camera_pos.y + game.height*0.5f + CELL_SIZE)/CELL_SIZE;
+
+    for (i32 col = col1; col <= col2; ++col) {
+        for (i32 row = row1; row <= row2; ++row) {
             u32 color = (row + col)%2 == 0 ? CELL1_COLOR : CELL2_COLOR;
             Cell cell = { .x = col, .y = row, };
             fill_cell(cell, color, 1.0f);
@@ -439,12 +426,9 @@ static void background_render(void)
     }
 }
 
-
-
 // TODO: controls tutorial
 void game_init(u32 width, u32 height)
 {
-    LOGF("sizeof(Game) == %zu", sizeof(Game));
     game_restart(width, height);
     LOGF("Game initialized");
 }
@@ -458,12 +442,12 @@ void game_init(u32 width, u32 height)
 #define GAMEOVER_FONT_COLOR SCORE_FONT_COLOR
 #define GAMEOVER_FONT_SIZE SCORE_FONT_SIZE
 
-u32 color_alpha(u32 color, f32 a)
+static u32 color_alpha(u32 color, f32 a)
 {
     return (color&0x00FFFFFF)|((u32)(a*0xFF)<<(3*8));
 }
 
-void egg_render(void)
+static void egg_render(void)
 {
     if (game.eating_egg) {
         f32 t = 1.0f - game.step_cooldown/STEP_INTEVAL;
@@ -474,7 +458,7 @@ void egg_render(void)
     }
 }
 
-void dead_snake_render(void)
+static void dead_snake_render(void)
 {
     // @tail-ignore
     for (u32 i = 1; i < game.dead_snake.size; ++i) {
@@ -490,7 +474,8 @@ void game_render(void)
         egg_render();
         snake_render();
         platform_fill_text(SCORE_PADDING, SCORE_PADDING, game.score_buffer, SCORE_FONT_SIZE, SCORE_FONT_COLOR, ALIGN_LEFT);
-    } break;
+    }
+    break;
 
     case STATE_PAUSE: {
         background_render();
@@ -547,17 +532,18 @@ void game_keydown(Key key)
 
     case STATE_PAUSE: {
         switch (key) {
-            case KEY_ACCEPT:
-                game.state = STATE_GAMEPLAY;
-                break;
-            case KEY_RESTART:
-                game_restart(game.width, game.height);
-                break;
-            case KEY_LEFT:
-            case KEY_RIGHT:
-            case KEY_UP:
-            case KEY_DOWN:
-            default: {}
+        case KEY_ACCEPT:
+            game.state = STATE_GAMEPLAY;
+            break;
+        case KEY_RESTART:
+            game_restart(game.width, game.height);
+            break;
+        case KEY_LEFT:
+        case KEY_RIGHT:
+        case KEY_UP:
+        case KEY_DOWN:
+        default:
+        {}
         }
     }
     break;
@@ -575,7 +561,7 @@ void game_keydown(Key key)
     }
 }
 
-Vec vec_sub(Vec a, Vec b)
+static Vec vec_sub(Vec a, Vec b)
 {
     return (Vec) {
         .x = a.x - b.x,
@@ -583,13 +569,28 @@ Vec vec_sub(Vec a, Vec b)
     };
 }
 
-f32 vec_len(Vec a)
+static f32 vec_len(Vec a)
 {
     return platform_sqrtf(a.x*a.x + a.y*a.y);
 }
 
+void game_resize(u32 width, u32 height)
+{
+    game.width = width;
+    game.height = height;
+}
+
 void game_update(f32 dt)
 {
+#ifdef FEATURE_DYNAMIC_CAMERA
+#define CAMERA_VELOCITY_FACTOR 0.50f
+    game.camera_pos.x += game.camera_vel.x*CAMERA_VELOCITY_FACTOR*dt;
+    game.camera_pos.y += game.camera_vel.y*CAMERA_VELOCITY_FACTOR*dt;
+    game.camera_vel = vec_sub(
+                          cell_center(*ring_back(&game.snake)),
+                          game.camera_pos);
+#endif
+
     switch (game.state) {
     case STATE_GAMEPLAY: {
         game.step_cooldown -= dt;
@@ -605,7 +606,7 @@ void game_update(f32 dt)
 
             if (cell_eq(game.egg, next_head)) {
                 ring_push_back(&game.snake, next_head);
-                game.egg = random_cell_outside_of_snake();
+                random_egg();
                 game.eating_egg = TRUE;
                 game.score += 1;
                 stbsp_snprintf(game.score_buffer, sizeof(game.score_buffer), "Score: %u", game.score);
@@ -653,7 +654,9 @@ void game_update(f32 dt)
     }
     break;
 
-    case STATE_PAUSE: {} break;
+    case STATE_PAUSE:
+    {} break;
+
     case STATE_GAMEOVER: {
         // @tail-ignore
         for (u32 i = 1; i < game.dead_snake.size; ++i) {
@@ -662,7 +665,8 @@ void game_update(f32 dt)
             game.dead_snake.items[i].x += game.dead_snake.vels[i].x*dt;
             game.dead_snake.items[i].y += game.dead_snake.vels[i].y*dt;
         }
-    } break;
+    }
+    break;
 
     default: {
         UNREACHABLE();
@@ -670,5 +674,6 @@ void game_update(f32 dt)
     }
 }
 
-// TODO: moving around egg
+// TODO: indicate the borders of the snake's body
 // TODO: inifinite field mechanics
+// TODO: moving around egg

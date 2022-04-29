@@ -1,5 +1,7 @@
 # Snake
 
+[![thumbnail](thumbnail.png)](http://tsoding.org/snake-c-wasm/)
+
 ## Quick Start
 
 ### Build
