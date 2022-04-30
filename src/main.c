@@ -74,11 +74,11 @@ u16 get_color(u32 color)
     }
 }
 
-i32 strlen(const char *ptr) {
+i32 strlen(const char *str) {
     i32 len = 0;
-    while (ptr != 0) {
+    while (*str != 0){
         len++;
-        ptr++;
+        str++;
     }
     return len;
 }
