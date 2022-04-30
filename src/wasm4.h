@@ -3,7 +3,10 @@
 
 #pragma once
 
-#include <stdint.h>
+#include "../game.h"
+
+typedef unsigned short u16;
+typedef short i16;
 
 #define WASM_EXPORT(name) __attribute__((export_name(name)))
 #define WASM_IMPORT(name) __attribute__((import_name(name)))
@@ -25,17 +28,17 @@ WASM_EXPORT("update") void update ();
 // │                                                                           │
 // └───────────────────────────────────────────────────────────────────────────┘
 
-#define PALETTE ((uint32_t*)0x04)
-#define DRAW_COLORS ((uint16_t*)0x14)
-#define GAMEPAD1 ((const uint8_t*)0x16)
-#define GAMEPAD2 ((const uint8_t*)0x17)
-#define GAMEPAD3 ((const uint8_t*)0x18)
-#define GAMEPAD4 ((const uint8_t*)0x19)
-#define MOUSE_X ((const int16_t*)0x1a)
-#define MOUSE_Y ((const int16_t*)0x1c)
-#define MOUSE_BUTTONS ((const uint8_t*)0x1e)
-#define SYSTEM_FLAGS ((uint8_t*)0x1f)
-#define FRAMEBUFFER ((uint8_t*)0xa0)
+#define PALETTE ((u32*)0x04)
+#define DRAW_COLORS ((u16*)0x14)
+#define GAMEPAD1 ((const u8*)0x16)
+#define GAMEPAD2 ((const u8*)0x17)
+#define GAMEPAD3 ((const u8*)0x18)
+#define GAMEPAD4 ((const u8*)0x19)
+#define MOUSE_X ((const i16*)0x1a)
+#define MOUSE_Y ((const i16*)0x1c)
+#define MOUSE_BUTTONS ((const u8*)0x1e)
+#define SYSTEM_FLAGS ((u8*)0x1f)
+#define FRAMEBUFFER ((u8*)0xa0)
 
 #define BUTTON_1 1
 #define BUTTON_2 2
@@ -59,12 +62,12 @@ WASM_EXPORT("update") void update ();
 
 /** Copies pixels to the framebuffer. */
 WASM_IMPORT("blit")
-void blit (const uint8_t* data, int32_t x, int32_t y, uint32_t width, uint32_t height, uint32_t flags);
+void blit (const u8* data, i32 x, i32 y, u32 width, u32 height, u32 flags);
 
 /** Copies a subregion within a larger sprite atlas to the framebuffer. */
 WASM_IMPORT("blitSub")
-void blitSub (const uint8_t* data, int32_t x, int32_t y, uint32_t width, uint32_t height,
-    uint32_t srcX, uint32_t srcY, uint32_t stride, uint32_t flags);
+void blitSub (const u8* data, i32 x, i32 y, u32 width, u32 height,
+    u32 srcX, u32 srcY, u32 stride, u32 flags);
 
 #define BLIT_2BPP 1
 #define BLIT_1BPP 0
@@ -74,27 +77,27 @@ void blitSub (const uint8_t* data, int32_t x, int32_t y, uint32_t width, uint32_
 
 /** Draws a line between two points. */
 WASM_IMPORT("line")
-void line (int32_t x, int32_t y, uint32_t width, uint32_t height);
+void line (i32 x, i32 y, u32 width, u32 height);
 
 /** Draws a horizontal line. */
 WASM_IMPORT("hline")
-void hline (int32_t x, int32_t y, uint32_t len);
+void hline (i32 x, i32 y, u32 len);
 
 /** Draws a vertical line. */
 WASM_IMPORT("vline")
-void vline (int32_t x, int32_t y, uint32_t len);
+void vline (i32 x, i32 y, u32 len);
 
 /** Draws an oval (or circle). */
 WASM_IMPORT("oval")
-void oval (int32_t x, int32_t y, uint32_t width, uint32_t height);
+void oval (i32 x, i32 y, u32 width, u32 height);
 
 /** Draws a rectangle. */
 WASM_IMPORT("rect")
-void rect (int32_t x, int32_t y, uint32_t width, uint32_t height);
+void rect (i32 x, i32 y, u32 width, u32 height);
 
 /** Draws text using the built-in system font. */
 WASM_IMPORT("text")
-void text (const char* text, int32_t x, int32_t y);
+void text (const char* text, i32 x, i32 y);
 
 // ┌───────────────────────────────────────────────────────────────────────────┐
 // │                                                                           │
@@ -104,7 +107,7 @@ void text (const char* text, int32_t x, int32_t y);
 
 /** Plays a sound tone. */
 WASM_IMPORT("tone")
-void tone (uint32_t frequency, uint32_t duration, uint32_t volume, uint32_t flags);
+void tone (u32 frequency, u32 duration, u32 volume, u32 flags);
 
 #define TONE_PULSE1 0
 #define TONE_PULSE2 1
@@ -125,11 +128,11 @@ void tone (uint32_t frequency, uint32_t duration, uint32_t volume, uint32_t flag
 
 /** Reads up to `size` bytes from persistent storage into the pointer `dest`. */
 WASM_IMPORT("diskr")
-uint32_t diskr (void* dest, uint32_t size);
+u32 diskr (void* dest, u32 size);
 
 /** Writes up to `size` bytes from the pointer `src` into persistent storage. */
 WASM_IMPORT("diskw")
-uint32_t diskw (const void* src, uint32_t size);
+u32 diskw (const void* src, u32 size);
 
 /** Prints a message to the debug console. */
 WASM_IMPORT("trace") void trace (const char* str);

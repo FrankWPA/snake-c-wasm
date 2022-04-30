@@ -14,7 +14,7 @@
 #define BOTTON_SCREEN (SCREEN_SIZE - SCREEN_HEIGHT)
 #endif
 
-uint8_t prev_state = 0;
+u8 prev_state = 0;
 
 u32 rgb_color(u32 color)
 {
@@ -34,7 +34,7 @@ void start()
 }
 
 void update () {
-    const uint8_t just_pressed = *GAMEPAD1 & (*GAMEPAD1 ^ prev_state);
+    const u8 just_pressed = *GAMEPAD1 & (*GAMEPAD1 ^ prev_state);
     
     if (just_pressed & BUTTON_DOWN) {
         game_keydown(KEY_DOWN);
@@ -63,7 +63,7 @@ void platform_panic(const char *file_path, int line, const char *message)
     tracef("%s:%d: GAME ASSERTION FAILED: %s\n", file_path, line, message);
 }
 
-uint16_t get_color(u32 color)
+u16 get_color(u32 color)
 {
     switch (color)
     {
@@ -72,6 +72,15 @@ uint16_t get_color(u32 color)
     case COLOR2: return 0x003;
     case COLOR3: default: return 0x004;
     }
+}
+
+i32 strlen(const char *ptr) {
+    i32 len = 0;
+    while (ptr != 0) {
+        len++;
+        ptr++;
+    }
+    return len;
 }
 
 i32 align_offset(Align align, const char *message)
@@ -86,6 +95,7 @@ i32 align_offset(Align align, const char *message)
 
 void platform_fill_text(i32 x, i32 y, const char *message, u32 size, u32 color, Align align)
 {
+    (void)size;
     *DRAW_COLORS = get_color(color);
     x = x/10 - align_offset(align, message) * FONT_SIZE;
 
@@ -135,5 +145,6 @@ void platform_stroke_line(i32 x1, i32 y1, i32 x2, i32 y2, u32 color)
 
 f32 platform_sqrtf(f32 x)
 {
-    return sqrtf(x);
+    const int result = 0x1fbb4000 + (*(int*)&x >> 1);
+    return *(float*)&result;
 }
