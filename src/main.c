@@ -1,10 +1,10 @@
 #include "wasm4.h"
 #include "../game.c"
 
-#define COLOR0 0xFF181818
-#define COLOR1 0xFF183018
-#define COLOR2 0xFF189018
-#define COLOR3 0xFF31A6FF
+#define COLOR0 CELL1_COLOR
+#define COLOR1 CELL2_COLOR
+#define COLOR2 SNAKE_BODY_COLOR
+#define COLOR3 EGG_BODY_COLOR
 
 #define SCREEN_HEIGHT (ROWS * SCREEN_SIZE / COLS) 
 #define FONT_SIZE 8
