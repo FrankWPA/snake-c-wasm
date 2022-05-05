@@ -1,7 +1,5 @@
 #include "./game.h"
 
-// #define FEATURE_DYNAMIC_CAMERA
-// #define FEATURE_SNAKE_SPINE
 // #define FEATURE_DEV
 
 #define STB_SPRINTF_IMPLEMENTATION
@@ -174,6 +172,8 @@ typedef struct {
     f32 dt_scale;
 #endif
 
+    b32 infinite_field;
+
     u32 score;
     char score_buffer[256];
 } Game;
@@ -247,68 +247,68 @@ static i32 is_cell_snake_body(Cell cell)
     return -1;
 }
 
-#ifndef FEATURE_DYNAMIC_CAMERA
 static i32 emod(i32 a, i32 b)
 {
     return (a%b + b)%b;
 }
-#endif
+
+static Cell cell_wrap(Cell cell)
+{
+    cell.x = emod(cell.x, COLS);
+    cell.y = emod(cell.y, ROWS);
+    return cell;
+}
+
+static Cell dir_cell_data[COUNT_DIRS] = {
+    [DIR_LEFT]  = {.x = -1},
+    [DIR_RIGHT] = {.x =  1},
+    [DIR_UP]    = {.y = -1},
+    [DIR_DOWN]  = {.y =  1},
+};
+
+static Cell cell_add(Cell a, Cell b)
+{
+    a.x += b.x;
+    a.y += b.y;
+    return a;
+}
+
+#define dir_cell(dir) (ASSERT((u32) dir < COUNT_DIRS, "Invalid direction"), dir_cell_data[dir])
+#define dir_vec(dir) cell_vec(dir_cell(dir))
 
 static Cell step_cell(Cell head, Dir dir)
 {
-    switch (dir) {
-    case DIR_RIGHT:
-        head.x += 1;
-        break;
-
-    case DIR_UP:
-        head.y -= 1;
-        break;
-
-    case DIR_LEFT:
-        head.x -= 1;
-        break;
-
-    case DIR_DOWN:
-        head.y += 1;
-        break;
-
-    case COUNT_DIRS:
-    default: {
-        UNREACHABLE();
+    if (game.infinite_field) {
+        return cell_add(head, dir_cell(dir));
+    } else {
+        return cell_wrap(cell_add(head, dir_cell(dir)));
     }
-    }
-
-#ifndef FEATURE_DYNAMIC_CAMERA
-    // TODO: this FEATURE_DYNAMIC_CAMERA should be moved outside of step_cell
-    head.x = emod(head.x, COLS);
-    head.y = emod(head.y, ROWS);
-#endif
-
-    return head;
 }
 
-static void random_egg(void)
+#define SNAKE_INIT_ROW (ROWS/2)
+
+static void random_egg(b32 first)
 {
-#define RANDOM_EGG_MAX_ATTEMPTS 1000
-#ifdef FEATURE_DYNAMIC_CAMERA
-    i32 col1 = (i32)(game.camera_pos.x - game.width*0.5f + CELL_SIZE)/CELL_SIZE;
-    i32 col2 = (i32)(game.camera_pos.x + game.width*0.5f - CELL_SIZE)/CELL_SIZE;
-    i32 row1 = (i32)(game.camera_pos.y - game.height*0.5f + CELL_SIZE)/CELL_SIZE;
-    i32 row2 = (i32)(game.camera_pos.y + game.height*0.5f - CELL_SIZE)/CELL_SIZE;
-#else
     i32 col1 = 0;
     i32 col2 = COLS - 1;
     i32 row1 = 0;
     i32 row2 = ROWS - 1;
-#endif
 
+    // TODO: make a single formula that works for any mode
+    if (game.infinite_field) {
+        col1 = (i32)(game.camera_pos.x - game.width*0.5f + CELL_SIZE)/CELL_SIZE;
+        col2 = (i32)(game.camera_pos.x + game.width*0.5f - CELL_SIZE)/CELL_SIZE;
+        row1 = (i32)(game.camera_pos.y - game.height*0.5f + CELL_SIZE)/CELL_SIZE;
+        row2 = (i32)(game.camera_pos.y + game.height*0.5f - CELL_SIZE)/CELL_SIZE;
+    }
+
+#define RANDOM_EGG_MAX_ATTEMPTS 1000
     u32 attempt = 0;
     do {
         game.egg.x = rand()%(col2 - col1 + 1) + col1;
         game.egg.y = rand()%(row2 - row1 + 1) + row1;
         attempt += 1;
-    } while (is_cell_snake_body(game.egg) >= 0 && attempt < RANDOM_EGG_MAX_ATTEMPTS);
+    } while ((is_cell_snake_body(game.egg) >= 0 || (first && game.egg.y == SNAKE_INIT_ROW)) && attempt < RANDOM_EGG_MAX_ATTEMPTS);
 
     ASSERT(attempt <= RANDOM_EGG_MAX_ATTEMPTS, "TODO: make sure we have always at least one free visible cell");
 }
@@ -328,10 +328,10 @@ static void game_restart(u32 width, u32 height)
     game.camera_pos.y = height/2;
 
     for (u32 i = 0; i < SNAKE_INIT_SIZE; ++i) {
-        Cell head = {.x = i, .y = ROWS/2};
+        Cell head = {.x = i, .y = SNAKE_INIT_ROW};
         ring_push_back(&game.snake, head);
     }
-    random_egg();
+    random_egg(TRUE);
     game.dir = DIR_RIGHT;
     // TODO: Using snprintf to render Score is an overkill
     // I believe snprintf should be only used for LOGF and in the "release" build stbsp_snprintf should not be included at all
@@ -418,7 +418,6 @@ Vec sides_center(Sides sides)
     };
 }
 
-#ifdef FEATURE_SNAKE_SPINE
 static void fill_spine(Vec center, Dir dir, float len, float thicc, u32 color)
 {
     Sides sides = {
@@ -452,7 +451,6 @@ static void fill_fractured_spine(Sides sides, float thicc, u32 color, u8 mask)
         }
     }
 }
-#endif
 
 static void snake_render(void)
 {
@@ -470,9 +468,7 @@ static void snake_render(void)
 
     if (game.eating_egg) {
         fill_cell(head_cell, EGG_BODY_COLOR, 1.0f);
-#ifdef FEATURE_SNAKE_SPINE
         fill_cell(head_cell, EGG_SPINE_COLOR, SNAKE_SPINE_THICCNESS/CELL_SIZE*2.0f);
-#endif
     }
 
     fill_sides(head_slided_sides, SNAKE_BODY_COLOR);
@@ -482,7 +478,6 @@ static void snake_render(void)
         fill_cell(*ring_get(&game.snake, index), SNAKE_BODY_COLOR, 1.0f);
     }
 
-#ifdef FEATURE_SNAKE_SPINE
     for (u32 index = 1; index < game.snake.size - 2; ++index) {
         Cell cell1 = *ring_get(&game.snake, index);
         Cell cell2 = *ring_get(&game.snake, index + 1);
@@ -497,6 +492,7 @@ static void snake_render(void)
         Cell cell2 = *ring_get(&game.snake, game.snake.size - 1);
         f32 len = lerpf(0.0f, CELL_SIZE, 1.0f - t);
         fill_spine(cell_center(cell1), cells_dir(cell1, cell2), len, SNAKE_SPINE_THICCNESS, SNAKE_SPINE_COLOR);
+        fill_spine(cell_center(cell_add(cell2, dir_cell(dir_opposite(head_dir)))), head_dir, len, SNAKE_SPINE_THICCNESS, SNAKE_SPINE_COLOR);
     }
 
     // Tail
@@ -505,8 +501,8 @@ static void snake_render(void)
         Cell cell2 = *ring_get(&game.snake, 0);
         f32 len = lerpf(0.0f, CELL_SIZE, game.eating_egg ? 0.0f : t);
         fill_spine(cell_center(cell1), cells_dir(cell1, cell2), len, SNAKE_SPINE_THICCNESS, SNAKE_SPINE_COLOR);
+        fill_spine(cell_center(cell_add(cell2, dir_cell(tail_dir))), dir_opposite(tail_dir), len, SNAKE_SPINE_THICCNESS, SNAKE_SPINE_COLOR);
     }
-#endif
 
 #ifdef FEATURE_DEV
     for (u32 i = 0; i < game.snake.size; ++i) {
@@ -558,14 +554,10 @@ static void egg_render(void)
         f32 t = 1.0f - game.step_cooldown/STEP_INTEVAL;
         f32 a = lerpf(1.5f, 1.0f, t*t);
         fill_cell(game.egg, color_alpha(EGG_BODY_COLOR, t*t), a);
-#ifdef FEATURE_SNAKE_SPINE
         fill_cell(game.egg, color_alpha(EGG_SPINE_COLOR, t*t), a*(SNAKE_SPINE_THICCNESS/CELL_SIZE*2.0f));
-#endif
     } else {
         fill_cell(game.egg, EGG_BODY_COLOR, 1.0f);
-#ifdef FEATURE_SNAKE_SPINE
         fill_cell(game.egg, EGG_SPINE_COLOR, SNAKE_SPINE_THICCNESS/CELL_SIZE*2.0f);
-#endif
     }
 }
 
@@ -574,9 +566,7 @@ static void dead_snake_render(void)
     // @tail-ignore
     for (u32 i = 1; i < game.dead_snake.size; ++i) {
         fill_rect(game.dead_snake.items[i], SNAKE_BODY_COLOR);
-#ifdef FEATURE_SNAKE_SPINE
         fill_fractured_spine(rect_sides(game.dead_snake.items[i]), SNAKE_SPINE_THICCNESS, SNAKE_SPINE_COLOR, game.dead_snake.masks[i]);
-#endif
     }
 }
 
@@ -718,14 +708,14 @@ void game_update(f32 dt)
     dt *= game.dt_scale;
 #endif
 
-#ifdef FEATURE_DYNAMIC_CAMERA
 #define CAMERA_VELOCITY_FACTOR 0.80f
-    game.camera_pos.x += game.camera_vel.x*CAMERA_VELOCITY_FACTOR*dt;
-    game.camera_pos.y += game.camera_vel.y*CAMERA_VELOCITY_FACTOR*dt;
-    game.camera_vel = vec_sub(
-                          cell_center(*ring_back(&game.snake)),
-                          game.camera_pos);
-#endif
+    if (game.infinite_field) {
+        game.camera_pos.x += game.camera_vel.x*CAMERA_VELOCITY_FACTOR*dt;
+        game.camera_pos.y += game.camera_vel.y*CAMERA_VELOCITY_FACTOR*dt;
+        game.camera_vel = vec_sub(
+                              cell_center(*ring_back(&game.snake)),
+                              game.camera_pos);
+    }
 
     switch (game.state) {
     case STATE_GAMEPLAY: {
@@ -742,8 +732,9 @@ void game_update(f32 dt)
 
             if (cell_eq(game.egg, next_head)) {
                 ring_push_back(&game.snake, next_head);
-                random_egg();
+                random_egg(FALSE);
                 game.eating_egg = TRUE;
+                game.infinite_field = TRUE;
                 game.score += 1;
                 stbsp_snprintf(game.score_buffer, sizeof(game.score_buffer), "Score: %u", game.score);
             } else {
@@ -832,4 +823,4 @@ void game_update(f32 dt)
 }
 
 // TODO: inifinite field mechanics
-// TODO: moving around egg
+// TODO: starvation mechanics
