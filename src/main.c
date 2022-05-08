@@ -142,9 +142,3 @@ void platform_stroke_line(i32 x1, i32 y1, i32 x2, i32 y2, u32 color)
     *DRAW_COLORS = get_color(color);
     line(x1/10, y1/10, x2/10, y2/10);
 }
-
-f32 platform_sqrtf(f32 x)
-{
-    const int result = 0x1fbb4000 + (*(int*)&x >> 1);
-    return *(float*)&result;
-}
